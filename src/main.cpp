@@ -63,18 +63,20 @@ int main(int argc, char* argv[])
     if (application)
     {
         // Load parameters from data/parameters.xml
-        if (application->loadParameters())
+        //if (application->loadParameters())
         {
             // Parse options and override parameters.
-            if (application->parseOptions(argc, argv))
+            //if (application->parseOptions(argc, argv))
             {
                 try
                 {
                     // Initialization failure will throw std::runtime_error on failure.
                     application->initialize();
 
+					application->process("D:\\AnimNowShare\\Library\\Environment\\panorama.hdr", "C:\\Temp\\panorama.dds");
+
                     // Run failure will throw std::runtime_error on error.
-                    application->run();
+                    //application->run();
                 }
                 catch (const std::runtime_error& error)
                 {
@@ -84,7 +86,7 @@ int main(int argc, char* argv[])
                 }
             }
             // Save out application settings
-            application->saveParameters();
+            //application->saveParameters();
         }
         // Destroy the application.
         LOG("Destroying the application");

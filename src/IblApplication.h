@@ -78,6 +78,7 @@ class IBLApplication : public Ctr::Application
 
     bool                       parseOptions(int argc, char* argv[]);
     void                       initialize();
+	void                       process(std::string inputEnvironmentPath, std::string outputImagesBasePath);
     void                       run();
 
     ApplicationHandle          instance() const;
@@ -92,7 +93,7 @@ class IBLApplication : public Ctr::Application
     bool                       saveParameters() const;
 
     bool                       loadEnvironment(const std::string& filePathName);
-    bool                       saveImages(const std::string& filePathName, bool gameOnly = false);
+    bool                       saveImages(const std::string& filePathName, bool includeMDR);
 
     void                       loadAsset(Entity*& targetEntity,
                                          const std::string& assetPathName,

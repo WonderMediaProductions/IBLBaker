@@ -434,7 +434,7 @@ IBLApplicationHUD::render(const Ctr::Camera* camera)
                 std::wstring inputString(selectedFilePathName);
                 std::string  filePathName(inputString.begin(), inputString.end());
 
-                _iblApplication->saveImages(filePathName.c_str());
+                _iblApplication->saveImages(filePathName.c_str(), false);
             }
         }
         if (imguiButton("Compute"))

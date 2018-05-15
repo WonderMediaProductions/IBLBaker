@@ -1,8 +1,10 @@
+*.TMP
+*.aps
+data/textures/Procedural/Output.dds
 IblLog.log
-bin64/IBLBaker.map
-bin64/IBLBaker.pdb
-bin64/IBLBaker_d.ilk
-bin64/IBLBaker_d.pdb
+bin64/*
+Build64/*
+lib/*
 build/x64/Debug/EffectAPI.obj
 build/x64/Debug/EffectLoad.obj
 build/x64/Debug/EffectNonRuntime.obj

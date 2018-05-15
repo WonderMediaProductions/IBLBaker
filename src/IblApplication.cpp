@@ -257,12 +257,12 @@ void
 IBLApplication::initialize()
 {
     DeviceD3D11* device = new DeviceD3D11();
-    Ctr::ApplicationRenderParameters deviceParams(this, "IBLBaker", Ctr::Vector2i(_windowWidth, _windowHeight), _windowed, false);
+    Ctr::ApplicationRenderParameters deviceParams(this, "IBLBaker", Ctr::Vector2i(_windowWidth, _windowHeight), true, true);
 
     if (device->initialize(deviceParams))
     {
         _device = device;
-        imguiCreate(_device);
+        //imguiCreate(_device);
 
         _mainWindow = _device->renderWindow();
 
@@ -273,9 +273,9 @@ IBLApplication::initialize()
         _cameraManager->setTranslation(Ctr::Vector3f(0, -200, 0));
         _cameraManager->setRotation(Ctr::Vector3f(10, -15, -220));
 
-        loadAsset(_visualizedEntity, _defaultAsset, "", true);
+        //loadAsset(_visualizedEntity, _defaultAsset, "", true);
 
-        loadAsset(_shaderBallEntity, "data\\meshes\\shaderBall\\shaderBall.fbx", "", false);
+        //loadAsset(_shaderBallEntity, "data\\meshes\\shaderBall\\shaderBall.fbx", "", false);
 
         _sphereEntity = _scene->load("data\\meshes\\sphere\\sphere.obj", 
                                      "data\\meshes\\sphere\\sphere.material");
@@ -299,21 +299,21 @@ IBLApplication::initialize()
         _probe->hdrPixelFormatProperty()->set(_hdrFormatProperty->get()),
         _probe->sourceResolutionProperty()->set(_probeResolutionProperty->get());
 
-        Vector4f maxPixelValue = _iblSphereEntity->mesh(0)->material()->albedoMap()->maxValue();
-        _probe->maxPixelRProperty()->set(maxPixelValue.x);
-        _probe->maxPixelGProperty()->set(maxPixelValue.y);
-        _probe->maxPixelBProperty()->set(maxPixelValue.z);
+        //Vector4f maxPixelValue = _iblSphereEntity->mesh(0)->material()->albedoMap()->maxValue();
+        //_probe->maxPixelRProperty()->set(maxPixelValue.x);
+        //_probe->maxPixelGProperty()->set(maxPixelValue.y);
+        //_probe->maxPixelBProperty()->set(maxPixelValue.z);
 
         // Good to go.
-        _renderHUD = new IBLApplicationHUD(this, _device, _inputMgr->inputState(), _scene);
-        _renderHUD->create();
+        //_renderHUD = new IBLApplicationHUD(this, _device, _inputMgr->inputState(), _scene);
+        //_renderHUD->create();
 
-        {
-            _renderHUD->setLogoVisible(true);
-            _renderHUD->logo()->setBlendIn(6.0f);
-            _renderHUD->showApplicationUI();
-        }
-        syncVisualization();
+        //{
+        //    _renderHUD->setLogoVisible(true);
+        //    _renderHUD->logo()->setBlendIn(6.0f);
+        //    _renderHUD->showApplicationUI();
+        //}
+        //syncVisualization();
     }
     else
     {
@@ -337,6 +337,27 @@ IBLApplication::setupModelVisibility(Ctr::Entity* entity, bool visibility)
     {
         (*meshIt)->setVisible(visibility);
     }
+}
+
+void
+IBLApplication::process(std::string inputEnvironmentPath, std::string outputImagesBasePath)
+{
+	_probe->sourceResolutionProperty()->set(1024);
+	_probe->specularResolutionProperty()->set(1024);
+	_probe->diffuseResolutionProperty()->set(256);
+
+	// Setting this higher than 128 gives strange artifacts along the edges.
+	//_probe->sampleCountProperty()->set(128);
+	_probe->hdrPixelFormatProperty()->set(PF_FLOAT16_RGBA);
+
+	loadEnvironment(inputEnvironmentPath);
+
+	while (!_probe->isCached())
+	{
+		updateApplication();
+	}
+
+	saveImages(outputImagesBasePath, false);
 }
 
 void
@@ -546,7 +567,9 @@ IBLApplication::updateApplication()
     _cameraManager->update(elapsedTime, true, true);
     _device->update();
     _scene->update();
-    _renderHUD->update(elapsedTime);
+
+	if (_renderHUD)
+		_renderHUD->update(elapsedTime);
 
     Ctr::InputState* inputState = _inputMgr->input().inputState();
     if (inputState->leftMouseDown() && !inputState->hasGUIFocus() && 
@@ -560,12 +583,15 @@ IBLApplication::updateApplication()
         else
             entity = _visualizedEntity;
 
-        rotation = entity->mesh(0)->rotation();
+		if (entity)
+		{
+			rotation = entity->mesh(0)->rotation();
 
-        rotation += Ctr::Vector3f(((float)inputState->_y),((float)inputState->_x), 0);
-        std::vector<Mesh*> meshes = entity->meshes();
-        for (auto it = meshes.begin(); it != meshes.end(); it++)
-            (*it)->rotationProperty()->set(rotation);
+			rotation += Ctr::Vector3f(((float)inputState->_y), ((float)inputState->_x), 0);
+			std::vector<Mesh*> meshes = entity->meshes();
+			for (auto it = meshes.begin(); it != meshes.end(); it++)
+				(*it)->rotationProperty()->set(rotation);
+		}
     }
 
     if (_visualizationSpaceProperty->get() != _currentVisualizationSpaceProperty->get())
@@ -595,7 +621,9 @@ IBLApplication::updateApplication()
     _device->postEffectsMgr()->render(camera);
 
     _device->bindFrameBuffer(_device->deviceFrameBuffer());
-    _renderHUD->render(camera);
+
+	if (_renderHUD)
+		_renderHUD->render(camera);
 
 	// Present to back buffre
     _device->present();
@@ -673,12 +701,10 @@ IBLApplication::loadEnvironment(const std::string& filePathName)
 }
 
 bool
-IBLApplication::saveImages(const std::string& filePathName, bool gameOnly)
+IBLApplication::saveImages(const std::string& filePathName, bool includeMDR)
 {
     if (Ctr::IBLProbe* probe = _scene->probes()[0])
     {
-        bool trimmed = true;
-
         std::vector <std::string> pmtConversionQueue;
 
         size_t pathEnd = filePathName.rfind("/");
@@ -703,43 +729,43 @@ IBLApplication::saveImages(const std::string& filePathName, bool gameOnly)
         LOG ("PathName " << pathName);
         LOG ("FileName base " << fileNameBase);
 
-        if (trimmed)
-        {
-            std::string specularHDRPath = pathName + fileNameBase + "SpecularHDR.dds";
-            std::string diffuseHDRPath = pathName + fileNameBase + "DiffuseHDR.dds";
-            std::string envHDRPath = pathName + fileNameBase + "EnvHDR.dds";
+        std::string specularHDRPath = pathName + fileNameBase + "SpecularHDR.dds";
+        std::string diffuseHDRPath = pathName + fileNameBase + "DiffuseHDR.dds";
+        std::string envHDRPath = pathName + fileNameBase + "EnvHDR.dds";
 
-            std::string specularMDRPath = pathName + fileNameBase + "SpecularMDR.dds";
-            std::string diffuseMDRPath = pathName + fileNameBase + "DiffuseMDR.dds";
-            std::string envMDRPath = pathName + fileNameBase + "EnvMDR.dds";
+        std::string specularMDRPath = pathName + fileNameBase + "SpecularMDR.dds";
+        std::string diffuseMDRPath = pathName + fileNameBase + "DiffuseMDR.dds";
+        std::string envMDRPath = pathName + fileNameBase + "EnvMDR.dds";
 
-            std::string brdfLUTPath = pathName + fileNameBase + "Brdf.dds";
+        std::string brdfLUTPath = pathName + fileNameBase + "Brdf.dds";
 
-            LOG("Saving RGBM MDR diffuse to " << diffuseMDRPath);
-            probe->diffuseCubeMapMDR()->save(diffuseMDRPath, true /* fix seams */, false /* split to RGB MMM */);
-            LOG("Saving RGBM MDR specular to " << specularMDRPath);
-            probe->specularCubeMapMDR()->save(specularMDRPath, true /* fix seams */, false /* split to RGB MMM */);
-            LOG("Saving RGBM MDR environment to " << envMDRPath);
-            probe->environmentCubeMapMDR()->save(envMDRPath, true /* fix seams */, false /* split to RGB MMM */);
+		// http://graphicrants.blogspot.be/2009/04/rgbm-color-encoding.html
+		if (includeMDR)
+		{
+			LOG("Saving RGBM MDR diffuse to " << diffuseMDRPath);
+			probe->diffuseCubeMapMDR()->save(diffuseMDRPath, true /* fix seams */, false /* split to RGB MMM */);
+			LOG("Saving RGBM MDR specular to " << specularMDRPath);
+			probe->specularCubeMapMDR()->save(specularMDRPath, true /* fix seams */, false /* split to RGB MMM */);
+			LOG("Saving RGBM MDR environment to " << envMDRPath);
+			probe->environmentCubeMapMDR()->save(envMDRPath, true /* fix seams */, false /* split to RGB MMM */);
+		}
 
-
-            // Save the brdf too.
-            _scene->activeBrdf()->brdfLut()->save(brdfLUTPath, false, false);
+        // Save the brdf too.
+        _scene->activeBrdf()->brdfLut()->save(brdfLUTPath, false, false);
 
 
 // This operation on a 2k floating point cubemap with a full mip chain blows
 // through remaining addressable memory on 32bit.
 #if _64BIT
-            probe->environmentCubeMap()->save(envHDRPath, true, false);
+        probe->environmentCubeMap()->save(envHDRPath, true, false);
 #endif
-            LOG ("Saving HDR diffuse to " << diffuseHDRPath);
-            probe->diffuseCubeMap()->save(diffuseHDRPath, true, false);
+        LOG ("Saving HDR diffuse to " << diffuseHDRPath);
+        probe->diffuseCubeMap()->save(diffuseHDRPath, true, false);
 
-            LOG ("Saving HDR specular to " << specularHDRPath);
-            probe->specularCubeMap()->save(specularHDRPath, true, false);
+        LOG ("Saving HDR specular to " << specularHDRPath);
+        probe->specularCubeMap()->save(specularHDRPath, true, false);
 
-            return true;
-        }
+        return true;
     }
 
     return false;
@@ -785,16 +811,18 @@ IBLApplication::visualizationSpaceProperty()
 void
 IBLApplication::updateVisualizationType()
 {
-    _currentVisualizationSpaceProperty->set(_visualizationSpaceProperty->get());
+	if (_visualizedEntity)
+	{
+		_currentVisualizationSpaceProperty->set(_visualizationSpaceProperty->get());
 
-    switch (_currentVisualizationSpaceProperty->get())
-    {
-        case IBLApplication::HDR:
-            _visualizedEntity->mesh(0)->material()->setTechniqueName("Default");
-            break;
-    }
-    _device->shaderMgr()->resolveShaders(_visualizedEntity);
-
+		switch (_currentVisualizationSpaceProperty->get())
+		{
+		case IBLApplication::HDR:
+			_visualizedEntity->mesh(0)->material()->setTechniqueName("Default");
+			break;
+		}
+		_device->shaderMgr()->resolveShaders(_visualizedEntity);
+	}
 }
 
 Entity*
