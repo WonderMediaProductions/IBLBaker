@@ -70,15 +70,30 @@ class IBLProbe;
 class Entity;
 class Titles;
 
+class IBLCommandLineArgs
+{
+public:
+	IBLCommandLineArgs(int argc, char* argv[]);
+	~IBLCommandLineArgs();
+
+	std::string inputEnvFilePath;
+	std::string outputEnvFilesBasePath;
+
+	int sourceResolution = 1024;
+	int specularResolution = 1024;
+	int diffuseResolution = 128;
+
+	PixelFormat pixelFormat = PF_FLOAT16_RGBA;
+};
+
 class IBLApplication : public Ctr::Application
 { 
   public:
     IBLApplication(ApplicationHandle instance);
     virtual ~IBLApplication();
 
-    bool                       parseOptions(int argc, char* argv[]);
     void                       initialize();
-	void                       process(std::string inputEnvironmentPath, std::string outputImagesBasePath);
+	void                       process(const IBLCommandLineArgs& args);
     void                       run();
 
     ApplicationHandle          instance() const;

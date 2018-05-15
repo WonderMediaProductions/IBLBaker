@@ -62,6 +62,7 @@
 #include <Ctrimgui.h>
 #include <strstream>
 #include <Ctrimgui.h>
+#include "CmdLine.h"
 
 namespace Ctr
 {
@@ -110,6 +111,45 @@ ImguiEnumVal DebugAOVEnum[] =
 static const EnumTweakType DebugAOVType(&DebugAOVEnum[0], 9, "debugAOV");
 
 }
+
+IBLCommandLineArgs::IBLCommandLineArgs(int argc, char* argv[])
+{
+	cmdline::parser parser;
+	const char* inputFlag = "input";
+	const char* outputFlag = "output";
+	const char* sourceResFlag = "sourceResolution";
+	const char* specularResFlag = "specularResolution";
+	const char* diffuseResFlag = "diffuseResolution";
+	const char* pixelFormatFlag = "pixelFormat";
+
+	parser.add(inputFlag, 'i', "input HDR environment map file path", true, std::string(""));
+	parser.add(outputFlag, 'o', "output HDR environment map file base path (including .DDS extension)", true, std::string(""));
+	parser.add(sourceResFlag, 'r', "HDR environment map source image resolution", false, 1024);
+	parser.add(specularResFlag, 's', "HDR filtered specular reflection image resolution", false, 1024);
+	parser.add(diffuseResFlag, 'd', "HDR filtered diffuse reflection image resolution", false, 128);
+	parser.add(pixelFormatFlag, 'f', "Image pixel format", false, 16);
+
+	if (!parser.parse(argc, argv))
+		throw std::runtime_error("Invalid arguments: "+ parser.error_full() + "\nUsage: " + parser.usage());
+
+	inputEnvFilePath = parser.get<std::string>(inputFlag);
+	outputEnvFilesBasePath = parser.get<std::string>(outputFlag);
+
+	if (parser.exist(sourceResFlag))
+		sourceResolution = parser.get<int>(sourceResFlag);
+
+	if (parser.exist(specularResFlag))
+		specularResolution = parser.get<int>(specularResFlag);
+
+	if (parser.exist(diffuseResFlag))
+		diffuseResolution = parser.get<int>(diffuseResFlag);
+
+	if (parser.exist(pixelFormatFlag))
+		pixelFormat = parser.get<int>(pixelFormatFlag) == 16 ? PF_FLOAT16_RGBA : PF_FLOAT32_RGBA;
+}
+
+IBLCommandLineArgs::~IBLCommandLineArgs() = default;
+
 
 IBLApplication::IBLApplication(ApplicationHandle instance) : 
     Ctr::Application(instance),
@@ -162,23 +202,6 @@ IBLApplication::~IBLApplication()
     safedelete(_scene);
     safedelete(_renderHUD);
     safedelete(_inputMgr);
-}
-
-bool
-IBLApplication::parseOptions(int argc, char* argv[])
-{
-    // Scan for --help
-    for (int32_t argId = 0; argId < argc; argId++)
-    {
-        if (std::string("--help") == argv[argId])
-        {
-            LOG ("IBLBaker: Specular and Irradiance cubemap baking tool")
-
-            return false;
-        }
-    }
-
-    return true;
 }
 
 ApplicationHandle  
@@ -340,24 +363,25 @@ IBLApplication::setupModelVisibility(Ctr::Entity* entity, bool visibility)
 }
 
 void
-IBLApplication::process(std::string inputEnvironmentPath, std::string outputImagesBasePath)
+IBLApplication::process(const IBLCommandLineArgs& args)
 {
-	_probe->sourceResolutionProperty()->set(1024);
-	_probe->specularResolutionProperty()->set(1024);
-	_probe->diffuseResolutionProperty()->set(256);
+	_specularWorkflowProperty->set(Ctr::RoughnessMetal);
+	_probe->sourceResolutionProperty()->set(args.sourceResolution);
+	_probe->specularResolutionProperty()->set(args.specularResolution);
+	_probe->diffuseResolutionProperty()->set(args.diffuseResolution);
+	_probe->hdrPixelFormatProperty()->set(args.pixelFormat);
 
 	// Setting this higher than 128 gives strange artifacts along the edges.
 	//_probe->sampleCountProperty()->set(128);
-	_probe->hdrPixelFormatProperty()->set(PF_FLOAT16_RGBA);
 
-	loadEnvironment(inputEnvironmentPath);
+	loadEnvironment(args.inputEnvFilePath);
 
 	while (!_probe->isCached())
 	{
 		updateApplication();
 	}
 
-	saveImages(outputImagesBasePath, false);
+	saveImages(args.outputEnvFilesBasePath, false);
 }
 
 void
@@ -757,7 +781,8 @@ IBLApplication::saveImages(const std::string& filePathName, bool includeMDR)
 // This operation on a 2k floating point cubemap with a full mip chain blows
 // through remaining addressable memory on 32bit.
 #if _64BIT
-        probe->environmentCubeMap()->save(envHDRPath, true, false);
+		LOG("Saving HDR environment to " << envHDRPath);
+		probe->environmentCubeMap()->save(envHDRPath, true, false);
 #endif
         LOG ("Saving HDR diffuse to " << diffuseHDRPath);
         probe->diffuseCubeMap()->save(diffuseHDRPath, true, false);

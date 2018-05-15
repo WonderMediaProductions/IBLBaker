@@ -44,10 +44,14 @@
 
 int main(int argc, char* argv[])
 {
+	//char currentPath[4096];
+	//memset(currentPath, 0, sizeof(currentPath));
+	//_getcwd(currentPath, 4096);
+
+	//std::cout << "Current directory = " << currentPath << std::endl;
+
     ApplicationHandle applicationInstance = nullptr;
 
-    // Move up one directory to get to the sandbox location.
-    _chdir("../");
 #if _WIN32
     applicationInstance = GetModuleHandle(nullptr);
 #else 
@@ -58,7 +62,8 @@ int main(int argc, char* argv[])
     assert (applicationInstance);
     std::unique_ptr<Ctr::IBLApplication> application;
     application.reset(new Ctr::IBLApplication(applicationInstance));
-    bool encounteredError = false;
+
+	int exitCode = 0;
 
     if (application)
     {
@@ -70,19 +75,21 @@ int main(int argc, char* argv[])
             {
                 try
                 {
+					Ctr::IBLCommandLineArgs args(argc, argv);
+
                     // Initialization failure will throw std::runtime_error on failure.
                     application->initialize();
 
-					application->process("D:\\AnimNowShare\\Library\\Environment\\panorama.hdr", "C:\\Temp\\panorama.dds");
+					application->process(args);
 
-                    // Run failure will throw std::runtime_error on error.
+                	// Run failure will throw std::runtime_error on error.
                     //application->run();
                 }
                 catch (const std::runtime_error& error)
                 {
                     // Errored out, attempt to exit.
-                    LOG("Something terrible happened: " << error.what());
-                    return 0;
+					std::cerr << error.what() << std::endl;
+					exitCode = 100;
                 }
             }
             // Save out application settings
@@ -92,6 +99,7 @@ int main(int argc, char* argv[])
         LOG("Destroying the application");
         application.reset();
     }
-    LOG("Shutting down application");
-    return 0;
+
+	LOG("Shutting down application");
+	return exitCode;;
 }
