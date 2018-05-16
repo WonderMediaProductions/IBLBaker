@@ -123,14 +123,14 @@ IBLCommandLineArgs::IBLCommandLineArgs(int argc, char* argv[])
 	const char* pixelFormatFlag = "pixelFormat";
 
 	parser.add(inputFlag, 'i', "input HDR environment map file path", true, std::string(""));
-	parser.add(outputFlag, 'o', "output HDR environment map file base path (including .DDS extension)", true, std::string(""));
+	parser.add(outputFlag, 'o', "output HDR environment map file base path", true, std::string(""));
 	parser.add(sourceResFlag, 'r', "HDR environment map source image resolution", false, 1024);
 	parser.add(specularResFlag, 's', "HDR filtered specular reflection image resolution", false, 1024);
 	parser.add(diffuseResFlag, 'd', "HDR filtered diffuse reflection image resolution", false, 128);
 	parser.add(pixelFormatFlag, 'f', "Image pixel format", false, 16);
 
 	if (!parser.parse(argc, argv))
-		throw std::runtime_error("Invalid arguments: "+ parser.error_full() + "\nUsage: " + parser.usage());
+		throw std::runtime_error("Invalid arguments: "+ parser.error() + "\n" + parser.usage());
 
 	inputEnvFilePath = parser.get<std::string>(inputFlag);
 	outputEnvFilesBasePath = parser.get<std::string>(outputFlag);
@@ -741,7 +741,8 @@ IBLApplication::saveImages(const std::string& filePathName, bool includeMDR)
                 return false;
             }
         }
-        size_t extension = filePathName.rfind(".");
+        
+    	size_t extension = filePathName.rfind(".");
         if (extension == std::string::npos)
         {
             extension = filePathName.length();
