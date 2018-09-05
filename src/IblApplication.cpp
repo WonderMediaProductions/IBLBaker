@@ -121,6 +121,7 @@ IBLCommandLineArgs::IBLCommandLineArgs(int argc, char* argv[])
 	const char* specularResFlag = "specularResolution";
 	const char* diffuseResFlag = "diffuseResolution";
 	const char* bitsPerPixelFlag = "bitsPerPixel";
+	const char* debugBreakFlag = "debugBreak";
 
 	parser.add(inputFlag, 'i', "input HDR environment map file path", true, std::string(""));
 	parser.add(outputFlag, 'o', "output HDR environment map file base path (including .DDS extension)", true, std::string(""));
@@ -128,6 +129,7 @@ IBLCommandLineArgs::IBLCommandLineArgs(int argc, char* argv[])
 	parser.add(specularResFlag, 's', "HDR filtered specular reflection image resolution", false, 1024);
 	parser.add(diffuseResFlag, 'd', "HDR filtered diffuse reflection image resolution", false, 128);
 	parser.add(bitsPerPixelFlag, 'b', "Bits per HDR color component (16 or 32)", false, 16);
+	parser.add(debugBreakFlag, 0, "Raise a debugger breakpoint");
 
 	if (!parser.parse(argc, argv))
 		throw std::runtime_error("Invalid arguments: "+ parser.error_full() + "\nUsage: " + parser.usage());
@@ -146,6 +148,9 @@ IBLCommandLineArgs::IBLCommandLineArgs(int argc, char* argv[])
 
 	if (parser.exist(bitsPerPixelFlag))
 		pixelFormat = parser.get<int>(bitsPerPixelFlag) == 16 ? PF_FLOAT16_RGBA : PF_FLOAT32_RGBA;
+
+	if (parser.exist(debugBreakFlag))
+		debugBreak = parser.exist(debugBreakFlag);
 }
 
 IBLCommandLineArgs::~IBLCommandLineArgs() = default;

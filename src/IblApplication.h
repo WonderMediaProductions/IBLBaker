@@ -84,6 +84,8 @@ public:
 	int diffuseResolution = 128;
 
 	PixelFormat pixelFormat = PF_FLOAT16_RGBA;
+
+	bool debugBreak = false;
 };
 
 class IBLApplication : public Ctr::Application
