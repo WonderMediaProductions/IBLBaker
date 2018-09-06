@@ -77,6 +77,17 @@ int main(int argc, char* argv[])
                 {
 					Ctr::IBLCommandLineArgs args(argc, argv);
 
+					if (args.debugBreak)
+					{
+						char msg[256];
+						const int processId = GetCurrentProcessId();
+						sprintf_s(msg, "Break process with id %ld?", processId);
+						if (MessageBoxA(nullptr, msg, "Development", MB_YESNO|MB_ICONEXCLAMATION) == IDYES)
+						{
+							DebugBreak();
+						}
+					}
+
                     // Initialization failure will throw std::runtime_error on failure.
                     application->initialize();
 
