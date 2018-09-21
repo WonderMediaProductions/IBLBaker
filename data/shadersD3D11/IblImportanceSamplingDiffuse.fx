@@ -58,12 +58,11 @@ float4 IBLCorrection : IBLCORRECTION;
 float ConvolutionSamplesOffset = 0;
 float ConvolutionSampleCount = 0;
 float ConvolutionMaxSamples = 0;
-float ConvolutionRoughness = 0;
 float ConvolutionMip = 0;
+uint2 ConvolutionRandom = 0;
 
 float EnvironmentScale : IBLSOURCEENVIRONMENTSCALE;
 float4 IblMaxValue : IBLMAXVALUE;
-
 
 SamplerState EnvMapSampler
 {
@@ -71,6 +70,13 @@ SamplerState EnvMapSampler
     MaxAnisotropy = 16;
     AddressU = Wrap;
     AddressV = Wrap;
+};
+
+SamplerState AccumSampler
+{
+    Filter = MIN_MAG_MIP_POINT;
+    AddressU = Clamp;
+    AddressV = Clamp;
 };
 
 struct VS_CUBEMAP_IN
@@ -93,8 +99,17 @@ struct PS_CUBEMAP_IN
     float4 Pos      : SV_POSITION;  
     float3 Normal   : NORMAL;
     float2 Tex      : TEXCOORD0; 
+    uint   Face     : TEXCOORD1;
     uint RTIndex    : SV_RenderTargetArrayIndex;
 };
+
+float3 fix_cube_lookup(float3 v, float scale) {
+   float M = max(max(abs(v.x), abs(v.y)), abs(v.z));
+   if (abs(v.x) != M) v.x *= scale;
+   if (abs(v.y) != M) v.y *= scale;
+   if (abs(v.z) != M) v.z *= scale;
+   return v;
+}
 
 GS_CUBEMAP_IN VS_CubeMap( VS_CUBEMAP_IN input )
 {
@@ -119,21 +134,19 @@ void GS_CubeMap( triangle GS_CUBEMAP_IN input[3], inout TriangleStream<PS_CUBEMA
             output.Pos = mul(input[v].Pos, ConvolutionViews[face]);
             output.Pos = mul( output.Pos, mProj );
             output.Tex = input[v].Tex;
+            output.Face = face;
             CubeMapStream.Append( output );
         }
         CubeMapStream.RestartStrip();
     }
 }
 
-//
-// Attributed to:
-// http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
-// Holger Dammertz.
-// 
-float2 Hammersley(uint i, uint N) 
+float2 hammersley_seq(uint i, uint N, uint2 random)
 {
-    float ri = reversebits(i) * 2.3283064365386963e-10f;
-    return float2(float(i) / float(N), ri);
+    const f = 1.0 / 0x10000;
+    float x = frac((float(i) + (random.x & 0xFFFF) * f));
+    float y = float(reversebits(i) ^ random.y) * 2.3283064365386963e-10;
+    return float2(x, y);
 }
 
 float3x3 QuaternionToMatrix(float4 quat)
@@ -154,96 +167,175 @@ float3x3 QuaternionToMatrix(float4 quat)
     2.0 * float3(b.y, a.x, diag.z));
 }
 
-float3 rescaleHDR(float3 hdrPixel)
+// float3 rescaleHDR(float3 hdrPixel)
+// {
+//    if (hdrPixel.x < 0)
+//     hdrPixel.x = 0;
+//    if (hdrPixel.y < 0)
+//     hdrPixel.y = 0;
+//    if (hdrPixel.z < 0)
+//     hdrPixel.z = 0;
+
+//    float intensity  = float(dot(hdrPixel, float3(0.299f,0.587f,0.114f)));
+
+//    if (intensity > 1)
+//    {
+//        hdrPixel = hdrPixel - IBLCorrection.x * (hdrPixel - IblMaxValue.rgb) * hdrPixel * (hdrPixel - (IblMaxValue.rgb * 0.5));
+//    }
+//    else
+//    {
+//        hdrPixel = hdrPixel - IBLCorrection.x * (hdrPixel - IblMaxValue.rgb) * hdrPixel * (hdrPixel - 0.5);
+//    }
+
+
+//    // Saturation adjustment
+//    hdrPixel = lerp(intensity.xxx, hdrPixel, IBLCorrection.y);
+
+//    // Hue adjustment      
+//    const float3 root = float3(0.57735, 0.57735, 0.57735);
+//    float half_angle = 0.5 * radians(IBLCorrection.z); // Hue is radians of 0 tp 360 degree
+//    float4 rot_quat = float4( (root * sin(half_angle)), cos(half_angle));
+//    float3x3 rot_Matrix = QuaternionToMatrix(rot_quat);     
+//    hdrPixel = mul(rot_Matrix, hdrPixel);
+//    hdrPixel = hdrPixel * EnvironmentScale;
+
+//    return hdrPixel; 
+// }
+
+float3 ToColor(float3 v)
 {
-   if (hdrPixel.x < 0)
-    hdrPixel.x = 0;
-   if (hdrPixel.y < 0)
-    hdrPixel.y = 0;
-   if (hdrPixel.z < 0)
-    hdrPixel.z = 0;
+    return float3(v*0.5+0.5);
+}
 
-   float intensity  = float(dot(hdrPixel, float3(0.299f,0.587f,0.114f)));
+float3x3 CoordinateFrameX( float3 normal )
+{
+	float3 e1 = float3(0,0,1);
+	float3 e2 = normalize( cross( e1, normal ) );
+	float3 e3 = cross( normal, e2 );
+	return float3x3( e2, e3, normal );
+}
 
-   if (intensity > 1)
-   {
-       hdrPixel = hdrPixel - IBLCorrection.x * (hdrPixel - IblMaxValue.rgb) * hdrPixel * (hdrPixel - (IblMaxValue.rgb * 0.5));
-   }
-   else
-   {
-       hdrPixel = hdrPixel - IBLCorrection.x * (hdrPixel - IblMaxValue.rgb) * hdrPixel * (hdrPixel - 0.5);
-   }
+float3x3 CoordinateFrameY( float3 normal )
+{
+	float3 e1 = float3(1,0,0);
+	float3 e2 = normalize( cross( e1, normal ) );
+	float3 e3 = cross( normal, e2 );
+	return float3x3( e2, e3, normal );
+}
 
+float3x3 CoordinateFrameZ( float3 normal )
+{
+	float3 e1 = float3(0,1,0);
+	float3 e2 = normalize( cross( e1, normal ) );
+	float3 e3 = cross( normal, e2 );
+	return float3x3( e2, e3, normal );
+}
 
-   // Saturation adjustment
-   hdrPixel = lerp(intensity.xxx, hdrPixel, IBLCorrection.y);
+float3 importanceSampleDiffuse(float2 Xi)
+{
+    float CosTheta = 1.0-Xi.y;
+    float SinTheta = sqrt(1.0-CosTheta*CosTheta);
+    float Phi = 2*PI*Xi.x;
 
-   // Hue adjustment      
-   const float3 root = float3(0.57735, 0.57735, 0.57735);
-   float half_angle = 0.5 * radians(IBLCorrection.z); // Hue is radians of 0 tp 360 degree
-   float4 rot_quat = float4( (root * sin(half_angle)), cos(half_angle));
-   float3x3 rot_Matrix = QuaternionToMatrix(rot_quat);     
-   hdrPixel = mul(rot_Matrix, hdrPixel);
-   hdrPixel = hdrPixel * EnvironmentScale;
+    float3 H;
+    H.x = SinTheta * cos( Phi );
+    H.y = SinTheta * sin( Phi );
+    H.z = CosTheta;
 
-   return hdrPixel; 
+    return H;
 }
 
 float3 ImportanceSample (float3 N)
 {
+    const float T = 0.85;
+
     float3 V = N;
+
+    float3x3 cf1 = CoordinateFrameX(N);
+    float3x3 cf2 = CoordinateFrameY(N);
+    float3x3 cf3 = CoordinateFrameZ(N);
+    float Nz = abs(N.z);
+    float ts = max(0, Nz - T) / 0.1;
+
     float4 result = float4(0,0,0,0);
-    float SampleStep = (ConvolutionMaxSamples / ConvolutionSampleCount);
     uint sampleId = ConvolutionSamplesOffset;
     uint cubeWidth, cubeHeight;
     ConvolutionSrc.GetDimensions(cubeWidth, cubeHeight);
 
-    for(uint i = 0; i < ConvolutionSampleCount; i++ )
+    uint count = ConvolutionSampleCount;
+    uint2 random = ConvolutionRandom;
+    float solidAngleSample = 1.0 / (count * pdf);
+
+    for(uint i = 0; i < count; i++ )
     {
+        float2 Xi = hammersley_seq(i, count, random);
+        float3 L = importanceSampleDiffuse(Xi);
+        float pdf = L.z / PI;
+        float solidAngleTexel = 4 * PI / (6 * cubeWidth * cubeWidth);
+        float lod = 0.5 * log2((float)(solidAngleSample / solidAngleTexel));
 
-        float2 Xi = Hammersley(sampleId, ConvolutionMaxSamples);
-        float3 H = importanceSampleDiffuse( Xi, N);
-        float3 L = normalize(2 * dot( V, H ) * H - V);
-        float NoL = saturate(dot( N, L ));
-        if (NoL > 0.0)
+        float3 H1 = mul(L.xyz, cf1);
+        float3 c1 = ConvolutionSrc.SampleLevel(EnvMapSampler, H1, lod).rgb;
+
+        [branch]
+        if (abs(N.z) > T) 
         {
-            // Compute Lod using inverse solid angle and pdf.
-            // From Chapter 20.4 Mipmap filtered samples in GPU Gems 3.
-            // http://http.developer.nvidia.com/GPUGems3/gpugems3_ch20.html
-            float pdf = max(0.0, dot(N, L) * INV_PI);
-            
-            float solidAngleTexel = 4 * PI / (6 * cubeWidth * cubeWidth);
-            float solidAngleSample = 1.0 / (ConvolutionSampleCount * pdf);
-            float lod = 0.5 * log2((float)(solidAngleSample / solidAngleTexel));
-
-            float3 diffuseSample = rescaleHDR(ConvolutionSrc.SampleLevel(EnvMapSampler, H, lod).rgb );
-            result = sumDiffuse(diffuseSample, NoL, result);
+            float3 H2 = mul(L.xyz, cf2);
+            float3 H3 = mul(L.xyz, cf3);
+            float3 c2 = ConvolutionSrc.SampleLevel(EnvMapSampler, H2, lod).rgb;
+            float3 c3 = ConvolutionSrc.SampleLevel(EnvMapSampler, H3, lod).rgb;
+            float3 c = lerp(c1, (c1+c2+c3)/3, ts);
+            result += float4(c, 1);
         }
-        sampleId += SampleStep;
+        else 
+        {
+            result += float4(c1, 1);
+        }
    }
-   if (result.w == 0)
-        return result.xyz;
-   else   
-       return (result.xyz / result.w);
+
+   return (result.xyz / result.w);
+}
+
+float2 cubeNormalToUV(float3 direction, uint face)
+{
+    switch (face)
+    {
+        case 0:
+            return 0.5 + 0.5 * float2(-direction.z, -direction.y) / direction.x;
+        case 1:
+            return 0.5 + 0.5 * float2(direction.z, -direction.y) / -direction.x;
+        case 2:
+            return 0.5 + 0.5 * float2(direction.x, direction.z) / direction.y;
+        case 3:
+            return 0.5 + 0.5 * float2(direction.x, -direction.z) / -direction.y;
+        case 4:
+            return 0.5 + 0.5 * float2(direction.x, -direction.y) / direction.z;
+        case 5:
+            return 0.5 + 0.5 * float2(-direction.x, -direction.y) / -direction.z;
+        default:
+            return float2(0,0);
+    }
 }
 
 float4 PS_CubeMap( PS_CUBEMAP_IN input) : SV_Target
 {
-    float3 R = input.Normal;
-    float4 sampledColor = float4(0,0,0,1);
+    float3 R = normalize(input.Normal);
 
     // Sample source cubemap at specified mip.
     float3 importanceSampled = ImportanceSample(R);
 
+    float4 sampledColor = 1;
+
     if (ConvolutionSamplesOffset > 1e-6)
     {
         float3 lastResult = LastResult.SampleLevel(EnvMapSampler, R, 0).rgb;
-        sampledColor.rgb = lerp(lastResult.xyz, importanceSampled.xyz, 1.0 / (ConvolutionSamplesOffset+1));
+        sampledColor.rgb = lerp(lastResult.xyz, importanceSampled.xyz, 1.0 / (ConvolutionSamplesOffset));
     }
     else 
     {
         sampledColor.xyz = importanceSampled.xyz;
     }
+
     return sampledColor;
 }
 

@@ -125,12 +125,12 @@ _renderingEnabled(true),
 _showAbout(false),
 _aboutEnabled(true),
 _showEnvironment(true),
-_environmentEnabled(true),
 _showBrdf(true),
 _brdfEnabled(true),
 _showFiltering(true),
 _filteringEnabled(true),
 _scrollArea(0),
+_scrollAreaDebug(0),
 _iblApplication(application)
 {
     _applicationHud = this;
@@ -398,7 +398,7 @@ IBLApplicationHUD::render(const Ctr::Camera* camera)
     if (_uiVisible)
     {
         Ctr::Vector2i imguiWindowMin(10, 10);
-        Ctr::Vector2i imguiWindowMax = imguiWindowMin + Ctr::Vector2i(width / 5, height - 50);
+        Ctr::Vector2i imguiWindowMax = imguiWindowMin + Ctr::Vector2i(width/5, height - 50);
         Ctr::Region2i imguiWindowBounds(imguiWindowMin, imguiWindowMax);
         _inputState->setHasGUIFocus(imguiWindowBounds.intersects(Ctr::Vector2i(_inputState->_cursorPositionX, _inputState->_cursorPositionY)));
 
@@ -564,13 +564,18 @@ IBLApplicationHUD::render(const Ctr::Camera* camera)
             imguiPropertiesSlider("Input Gamma", &inputGammas[0], 2, 0.0f, 5.0f, 0.01f);
             imguiPropertySlider("Environment Scale", _scene->probes()[0]->environmentScaleProperty(), 0.0f, 10.0f, 0.1f);
 
-            // Lock sample counts for now.
+            // Lock sample counts for now, smoothing the new convolution with the previous one gives artifacts along the edges for some reason
             IntProperty* inputSamples[2] = {
                 _scene->probes()[0]->sampleCountProperty(),
-                //_scene->probes()[0]->samplesPerFrameProperty()
+                _scene->probes()[0]->samplesPerFrameProperty()
             };
 
-            imguiPropertiesSlider("Sample Count", &inputSamples[0], 1, 0.0f, 8192.0f, 128);
+            imguiPropertiesSlider("Sample Count", &inputSamples[0], _countof(inputSamples), 0.0f, 16384.0f, 128);
+
+            auto* sampleOffsetProperty = _scene->probes()[0]->sampleOffsetProperty();
+            if (sampleOffsetProperty)
+                imguiPropertySlider("Sample Offset", sampleOffsetProperty, 0.0f, 128.0, 1);
+
             imguiPropertySlider("Mip Drop", _scene->probes()[0]->mipDropProperty(), 0.0f, _scene->probes()[0]->specularCubeMap()->resource()->mipLevels() - 1.0f, 1);
             imguiPropertySlider("Saturation", _scene->probes()[0]->iblSaturationProperty(), 0.0f, 1.0f, 0.05f);
             //imguiPropertySlider("Contrast", _scene->probes()[0]->iblContrastProperty(), 0.0f, 1.0f, 0.05f);
@@ -599,44 +604,76 @@ IBLApplicationHUD::render(const Ctr::Camera* camera)
             imguiUnindent();
         }
 
-        imguiRegionBorder("Environment:", NULL, _showEnvironment, _environmentEnabled);
+        imguiEndScrollArea();
+
+        auto imguiDebugMin = Vector2i(imguiWindowMax.x, imguiWindowMin.y);
+        auto imguiDebugMax = Vector2i(width - imguiDebugMin.x, imguiWindowMax.y);
+        Ctr::Region2i imguiDebugBounds(imguiDebugMin, imguiDebugMax);
+
         if (_showEnvironment)
         {
-            imguiIndent();
-            static float _lod = 0.0f;
-            static bool _crossCubemapPreview = false;
-            if (imguiCube(_scene->probes()[0]->environmentCubeMap(), _lod, _crossCubemapPreview))
+            imguiBeginScrollArea("Debug", imguiDebugBounds.minExtent.x, imguiDebugBounds.minExtent.y,
+                imguiDebugBounds.maxExtent.x, imguiDebugBounds.maxExtent.y, &_scrollAreaDebug);
+
+            imguiRegionBorder("Environment source:", NULL, _envSourceExpanded);
+            if (_envSourceExpanded)
             {
-                _crossCubemapPreview = !_crossCubemapPreview;
+                imguiIndent();
+                auto* map = _iblApplication->sphereEntity()->mesh(0)->material()->albedoMap();
+                static float _lod = 0;
+                const float maxMips = map->resource()->mipLevels() - 1;
+                _lod = std::min(_lod, maxMips);
+                imguiSlider("LOD", _lod, 0.0f, maxMips, 1.0f);
+                imguiImage(map, _lod, 1.0f, float(map->width()) / map->height());
             }
 
-            imguiLabel("Specular IBL:");
-            static float _specularEnvLod = 0;
-            float maxSpecularMipLevels = _scene->probes()[0]->specularCubeMap()->resource()->mipLevels() - 1.0f - _scene->probes()[0]->mipDropProperty()->get();
-            if (_specularEnvLod > maxSpecularMipLevels)
-                maxSpecularMipLevels = maxSpecularMipLevels;
-            imguiSlider("IBL LOD", _specularEnvLod, 0.0f, maxSpecularMipLevels, 0.15f);
-        
-            static bool _specularCrossCubemapPreview = false;
-            if (imguiCube(_scene->probes()[0]->specularCubeMap(), _specularEnvLod, _specularCrossCubemapPreview))
+            imguiRegionBorder("Environment cube:", NULL, _envCubeExpanded);
+            if (_envCubeExpanded)
             {
-                _specularCrossCubemapPreview = !_specularCrossCubemapPreview;
+                imguiIndent();
+                auto* map = _scene->probes()[0]->environmentCubeMap();
+                static float _lod = 0;
+                const float maxMips = map->resource()->mipLevels() - 1;
+                _lod = std::min(_lod, maxMips);
+                imguiSlider("LOD", _lod, 0.0f, maxMips, 1.0f);
+                static bool asCubeMap = true;
+                asCubeMap ^= imguiCube(map, _lod, asCubeMap);
             }
 
-            imguiLabel("Irradiance IBL:");
-            static float _diffuseEnvLod = 0.0f;
-            static bool _diffuseCrossCubemapPreview = false;
-            if (imguiCube(_scene->probes()[0]->diffuseCubeMap(), _diffuseEnvLod, _diffuseCrossCubemapPreview))
+            imguiRegionBorder("Specular IBL:", NULL, _envSpecularExpanded);
+            if (_envSpecularExpanded)
             {
-                _diffuseCrossCubemapPreview = !_diffuseCrossCubemapPreview;
+                imguiIndent();
+                auto* map = _scene->probes()[0]->specularCubeMap();
+                static float _lod = 0;
+                const float maxMips = map->resource()->mipLevels() - 1;
+                _lod = std::min(_lod, maxMips);
+                imguiSlider("LOD", _lod, 0.0f, maxMips, 1.0f);
+                static bool asCubeMap = true;
+                asCubeMap ^= imguiCube(map, _lod, asCubeMap);
             }
+
+            imguiRegionBorder("Irradiance IBL:", NULL, _envDiffuseExpanded);
+            if (_envDiffuseExpanded)
+            {
+                imguiIndent();
+                auto* map = _scene->probes()[0]->diffuseCubeMap();
+                static float _lod = 0;
+                const float maxMips = map->resource()->mipLevels() - 1;
+                _lod = std::min(_lod, maxMips);
+                imguiSlider("Environment cube LOD", _lod, 0.0f, maxMips, 1.0f);
+                static bool asCubeMap = true;
+                asCubeMap ^= imguiCube(map, _lod, asCubeMap);
+            }
+
             imguiUnindent();
+            imguiEndScrollArea();
         }
-        imguiEndScrollArea();
+
         imguiEndFrame();
     }
 
-    RenderHUD::render(camera);
+    //RenderHUD::render(camera);
 }
 
 

@@ -142,6 +142,8 @@ IBLApplication::IBLApplication(ApplicationHandle instance) :
     _runTitles(false),
     _inputMode(EquirectangularInput)
 {
+    Log::initialize("_log.txt", InfoEntry);
+
     _modelVisualizationProperty->set(0);
     _visualizationSpaceProperty->set(Ctr::IBLApplication::HDR);
     _currentVisualizationSpaceProperty->set(-1);
@@ -582,6 +584,7 @@ IBLApplication::updateApplication()
     _device->bindFrameBuffer (_device->postEffectsMgr()->sceneFrameBuffer());
     _device->clearSurfaces (0, Ctr::CLEAR_TARGET | Ctr::CLEAR_ZBUFFER|Ctr::CLEAR_STENCIL, 
                                 clearColor.x, clearColor.y, clearColor.z, clearColor.w);
+
     if (!_inputMgr->inputState()->leftMouseDown())
         _iblRenderPass->render(_scene);
 

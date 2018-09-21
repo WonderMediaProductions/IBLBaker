@@ -20,7 +20,7 @@ Texture2D s_tex;
 
 SamplerState linearSampler
 {
-    Filter = MIN_MAG_MIP_LINEAR;
+    Filter = MIN_MAG_MIP_POINT;
     AddressU = WRAP;
     AddressV = WRAP;
     MipLODBias = 0.0f;

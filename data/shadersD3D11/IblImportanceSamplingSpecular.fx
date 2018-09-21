@@ -124,16 +124,12 @@ void GS_CubeMap( triangle GS_CUBEMAP_IN input[3], inout TriangleStream<PS_CUBEMA
     }
 }
 
-//
-// Attributed to:
-// http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
-// Holger Dammertz.
-// 
-
-float2 Hammersley(uint i, uint N) 
+float2 hammersley_seq(uint i, uint N, uint2 random)
 {
-    float ri = reversebits(i) * 2.3283064365386963e-10f;
-    return float2(float(i) / float(N), ri);
+    const f = 1.0 / 0x10000;
+    float x = frac((float(i) + (random.x & 0xFFFF) * f));
+    float y = float(reversebits(i) ^ random.y) * 2.3283064365386963e-10;
+    return float2(x, y);
 }
 
 float3x3 QuaternionToMatrix(float4 quat)
@@ -200,7 +196,6 @@ float3 ImportanceSample (float3 R )
     float3 V = R;
     float4 result = float4(0,0,0,0);
 
-    float SampleStep = (ConvolutionMaxSamples / ConvolutionSampleCount);
     uint sampleId = ConvolutionSamplesOffset;
 
     uint cubeWidth, cubeHeight;
@@ -208,7 +203,7 @@ float3 ImportanceSample (float3 R )
 
     for(uint i = 0; i < ConvolutionSampleCount; i++ )
     {
-        float2 Xi = Hammersley(sampleId, ConvolutionMaxSamples);
+        float2 Xi = hammersley_seq(i, ConvolutionSampleCount, 0);
 
         float3 H = importanceSampleGGX( Xi, ConvolutionRoughness, N);
         float3 L = 2 * dot( V, H ) * H - V;
@@ -232,8 +227,7 @@ float3 ImportanceSample (float3 R )
             float3 hdrPixel = rescaleHDR(ConvolutionSrc.SampleLevel(EnvMapSampler, L, lod).rgb);
             result = sumSpecular(hdrPixel, NoL, result);
         }
-        sampleId += SampleStep;
-   }
+    }
 
     if (result.w == 0)
         return result.xyz;

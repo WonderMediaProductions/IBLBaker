@@ -138,39 +138,3 @@ sumSpecular (float3 hdrPixel, float NoL, float4 result)
     result.w += NoL;
     return result;
 }
-
-//------------------------------------------------------------------------------------//
-// Shader functions used by IblImportanceSamplingDiffuse.fx                           //
-//------------------------------------------------------------------------------------//
-//
-// Derived from GGX example in:
-// http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf
-// Image Based Lighting.
-//
-float3 importanceSampleDiffuse(float2 Xi, float3 N )
-{
-    float CosTheta = 1.0-Xi.y;
-    float SinTheta = sqrt(1.0-CosTheta*CosTheta);
-    float Phi = 2*PI*Xi.x;
-
-    float3 H;
-    H.x = SinTheta * cos( Phi );
-    H.y = SinTheta * sin( Phi );
-    H.z = CosTheta;
-
-    float3 UpVector = abs(N.z) < 0.999 ? float3(0,0,1) : float3(1,0,0);
-    float3 TangentX = normalize( cross( UpVector, N ) );
-    float3 TangentY = cross( N, TangentX );
-
-    return TangentX * H.x + TangentY * H.y + N * H.z;
-}
-
-
-// Sum the diffuse term while iterating over all samples.
-float4 
-sumDiffuse(float3 diffuseSample, float NoV, float4 result)
-{
-    result.xyz += diffuseSample;
-    result.w++;
-    return result;
-}

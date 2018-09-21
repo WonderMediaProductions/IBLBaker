@@ -24,7 +24,7 @@ TextureCube s_tex;
 
 SamplerState linearSampler
 {
-    Filter = MIN_MAG_MIP_LINEAR;
+    Filter = MIN_MAG_MIP_POINT; // MIN_MAG_MIP_LINEAR;
     AddressU = WRAP;
     AddressV = WRAP;
     MipLODBias = 0.0f;

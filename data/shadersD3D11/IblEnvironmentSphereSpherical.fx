@@ -59,7 +59,7 @@ SamplerState anisotropicSampler
     Filter =     ANISOTROPIC;
     MaxAnisotropy = 16;
     AddressU  = Wrap;
-    AddressV  = Wrap;
+    AddressV  = Clamp;
     BorderColor = float4(10000,10000,10000,10000);
 };
 

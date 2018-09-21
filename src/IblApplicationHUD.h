@@ -96,13 +96,18 @@ class IBLApplicationHUD : public RenderHUD
     bool                       _showAbout;
     bool                       _aboutEnabled;
     bool                       _showEnvironment;
-    bool                       _environmentEnabled;
     bool                       _showBrdf;
     bool                       _brdfEnabled;
     bool                       _showFiltering;
     bool                       _filteringEnabled;
 
+    bool                       _envSourceExpanded = true;
+    bool                       _envCubeExpanded = true;
+    bool                       _envDiffuseExpanded = true;
+    bool                       _envSpecularExpanded = true;
+
     int32_t                    _scrollArea;
+    int32_t                    _scrollAreaDebug;
 };
 }
 

@@ -62,8 +62,8 @@ SamplerState anisotropicSampler
     Filter =     ANISOTROPIC;
     MaxAnisotropy = 16;
     AddressU  = Wrap;
-    AddressV  = Wrap;
-    BorderColor = float4(10000,10000,10000,10000);
+    AddressV  = Clamp;
+    BorderColor = float4(1, 0, 0, 1);
 };
 
 struct VertexShaderIn
