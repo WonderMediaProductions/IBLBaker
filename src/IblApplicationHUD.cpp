@@ -567,10 +567,10 @@ IBLApplicationHUD::render(const Ctr::Camera* camera)
             // Lock sample counts for now.
             IntProperty* inputSamples[2] = {
                 _scene->probes()[0]->sampleCountProperty(),
-                _scene->probes()[0]->samplesPerFrameProperty()
+                //_scene->probes()[0]->samplesPerFrameProperty()
             };
 
-            imguiPropertiesSlider("Sample Count", &inputSamples[0], 2, 0.0f, 2048.0f, 1);
+            imguiPropertiesSlider("Sample Count", &inputSamples[0], 1, 0.0f, 8192.0f, 128);
             imguiPropertySlider("Mip Drop", _scene->probes()[0]->mipDropProperty(), 0.0f, _scene->probes()[0]->specularCubeMap()->resource()->mipLevels() - 1.0f, 1);
             imguiPropertySlider("Saturation", _scene->probes()[0]->iblSaturationProperty(), 0.0f, 1.0f, 0.05f);
             //imguiPropertySlider("Contrast", _scene->probes()[0]->iblContrastProperty(), 0.0f, 1.0f, 0.05f);
